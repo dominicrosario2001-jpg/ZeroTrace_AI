@@ -297,7 +297,7 @@ function StructuredTab({
   docType: DocumentType;
   onDownload: () => void;
 }) {
-  const { extractStructuredData } = require("@/utils/aiAnalysis");
+  
   const data = extractStructuredData(text, docType);
 
   const confidenceColor = {
