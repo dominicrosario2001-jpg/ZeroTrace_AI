@@ -300,11 +300,14 @@ function StructuredTab({
   
   const data = extractStructuredData(text, docType);
 
-  const confidenceColor = {
-    high: "text-safe",
-    medium: "text-warn",
-    low: "text-ghost-400",
-  }[data.confidence];
+  interface StructuredData {
+  docType: string;
+  confidence: "high" | "medium" | "low";  // ← Explicitly type this
+  wordCount: number;
+  readingTime: string;
+  language: string;
+  keyFields: Record<string, unknown>;
+}
 
   return (
     <div className="space-y-3">
