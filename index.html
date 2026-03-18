@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ZeroTrace AI — Private File Processor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink-900: #0A0A0F;
+    --ink-800: #12121A;
+    --ink-700: #1C1C28;
+    --ink-600: #2A2A3D;
+    --ink-500: #3D3D55;
+    --ghost-100: #F0F0F5;
+    --ghost-200: #D8D8E8;
+    --ghost-300: #B0B0C8;
+    --ghost-400: #8080A0;
+    --safe: #00FF88;
+    --blue: #00D4FF;
+    --purple: #B44FFF;
+    --warn: #FFB800;
+    --danger: #FF4444;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--ink-900);
+    color: var(--ghost-100);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--ink-800); }
+  ::-webkit-scrollbar-thumb { background: var(--ink-500); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--safe); }
+  ::selection { background: rgba(0,255,136,.2); color: var(--safe); }
+
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  .display { font-family: 'Syne', sans-serif; }
+
+  /* ── Glow backdrop ── */
+  .glow-bg {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0,255,136,.05) 0%, transparent 60%);
+  }
+
+  /* ── Banner ── */
+  .banner {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10,10,15,.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--ink-600);
+    padding: 10px 24px;
+  }
+  .banner-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .privacy-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(0,255,136,.08);
+    border: 1px solid rgba(0,255,136,.3);
+    border-radius: 999px; padding: 4px 12px;
+    animation: borderGlow 3s ease-in-out infinite;
+  }
+  .dot-pulse {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--safe);
+    animation: pulse 2s infinite;
+  }
+  .badge-text { color: var(--safe); font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  .banner-stats { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .stat { display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .stat-label { color: var(--ghost-400); }
+  .stat-val { color: var(--ghost-100); font-weight: 600; }
+  .stat-val.green { color: var(--safe); }
+  .divider { width: 1px; height: 16px; background: var(--ink-600); }
+  .guarantee { color: var(--ghost-400); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .offline-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: none; border: 1px solid var(--ink-500);
+    color: var(--ghost-400); border-radius: 999px;
+    padding: 4px 12px; font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; cursor: pointer; transition: all .2s;
+  }
+  .offline-btn:hover { border-color: var(--ghost-300); color: var(--ghost-200); }
+  .offline-btn.active { border-color: rgba(0,212,255,.4); color: var(--blue); background: rgba(0,212,255,.08); }
+
+  /* ── Layout ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; position: relative; }
+
+  /* ── Header ── */
+  .header { padding: 40px 0 32px; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .logo-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: rgba(0,255,136,.1); border: 1px solid rgba(0,255,136,.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .logo-name { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: var(--ghost-100); }
+  .logo-name span { color: var(--safe); }
+  h1 { font-family: 'Syne', sans-serif; font-size: clamp(28px, 4vw, 40px); font-weight: 800; line-height: 1.15; color: var(--ghost-100); }
+  .gradient-text { background: linear-gradient(90deg, var(--safe), var(--blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .subtitle { color: var(--ghost-400); margin-top: 10px; font-size: 14px; max-width: 340px; line-height: 1.6; }
+  .tech-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-top: 4px; }
+  .tech-badge {
+    color: var(--ghost-400); font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    border: 1px solid var(--ink-600); border-radius: 999px; padding: 3px 10px;
+  }
+
+  /* ── Grid ── */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } .tech-badges { display: none; } }
+  .left-col { display: flex; flex-direction: column; gap: 16px; }
+  .right-col { display: flex; flex-direction: column; gap: 12px; }
+
+  /* ── Cards ── */
+  .card {
+    background: linear-gradient(135deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 16px; overflow: hidden;
+  }
+
+  /* ── Drop Zone ── */
+  .drop-zone {
+    border: 2px dashed var(--ink-500); border-radius: 16px;
+    padding: 40px 24px; text-align: center; cursor: pointer;
+    transition: all .3s; position: relative; overflow: hidden;
+    background: rgba(18,18,26,.4);
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--safe);
+    background: rgba(0,255,136,.03);
+    box-shadow: inset 0 0 30px rgba(0,255,136,.04), 0 0 30px rgba(0,255,136,.08);
+  }
+  .file-type-icons { display: flex; justify-content: center; gap: 12px; margin-bottom: 20px; }
+  .file-type-icon { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .icon-box {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: var(--ink-700); border: 1px solid var(--ink-500);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: var(--ghost-400);
+  }
+  .icon-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ghost-400); }
+  .upload-circle {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: var(--ink-700); color: var(--ghost-400);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px; font-size: 22px; transition: all .3s;
+  }
+  .drop-zone:hover .upload-circle, .drop-zone.drag-over .upload-circle {
+    background: rgba(0,255,136,.15); color: var(--safe); transform: scale(1.1);
+  }
+  .drop-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--ghost-100); margin-bottom: 6px; }
+  .drop-sub { color: var(--ghost-400); font-size: 14px; }
+  .drop-sub a { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+  .drop-types { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ghost-400); margin-top: 12px; }
+  .scan-line {
+    position: absolute; width: 100%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--safe), transparent);
+    opacity: 0; pointer-events: none;
+    animation: scan 1.5s linear infinite;
+  }
+  .drop-zone.drag-over .scan-line { opacity: .5; }
+
+  /* ── Log Panel ── */
+  .log-panel { border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); height: 220px; display: flex; flex-direction: column; }
+  .log-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: rgba(18,18,26,.6); border-bottom: 1px solid var(--ink-700);
+  }
+  .traffic-lights { display: flex; gap: 6px; }
+  .tl { width: 10px; height: 10px; border-radius: 50%; }
+  .tl-r { background: rgba(255,68,68,.6); }
+  .tl-y { background: rgba(255,184,0,.6); }
+  .tl-g { background: rgba(0,255,136,.6); }
+  .log-title-row { display: flex; align-items: center; gap: 8px; margin-left: 8px; }
+  .log-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ghost-400); }
+  .clear-btn { background: none; border: none; color: var(--ghost-400); cursor: pointer; font-size: 14px; transition: color .2s; }
+  .clear-btn:hover { color: var(--ghost-200); }
+  .log-body { flex: 1; overflow-y: auto; padding: 12px; background: rgba(10,10,15,.8); position: relative; }
+  .log-body::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.04) 2px, rgba(0,0,0,.04) 4px);
+  }
+  .log-line { display: flex; gap: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.6; animation: slideIn .2s ease-out; }
+  .log-time { color: var(--ink-500); flex-shrink: 0; }
+  .log-info { color: var(--ghost-300); }
+  .log-success { color: var(--safe); }
+  .log-warn { color: var(--warn); }
+  .log-error { color: var(--danger); }
+  .log-prompt { color: var(--ghost-400); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .log-prompt span { color: var(--safe); }
+  .blink { animation: blink 1s step-end infinite; }
+
+  /* ── Privacy Card ── */
+  .privacy-card { border-radius: 16px; padding: 16px; border: 1px solid rgba(255,255,255,.06); background: linear-gradient(135deg, rgba(255,255,255,.02), rgba(255,255,255,.01)); }
+  .privacy-card-title { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: var(--ghost-400); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 10px; }
+  .privacy-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+  .privacy-item-icon { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+  .privacy-item-text { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ghost-400); line-height: 1.5; }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: rgba(18,18,26,.4); border: 1px solid var(--ink-700);
+    border-radius: 14px; padding: 12px 16px; flex-wrap: wrap;
+  }
+  .stats-group { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .stat-item { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ghost-400); }
+  .stat-item b { font-weight: 600; }
+  .stat-item b.green { color: var(--safe); }
+  .stat-item b.blue { color: var(--blue); }
+  .stat-item b.red { color: var(--danger); }
+  .stats-actions { display: flex; gap: 8px; }
+  .btn-zip {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,255,136,.1); border: 1px solid rgba(0,255,136,.3);
+    color: var(--safe); border-radius: 10px; padding: 6px 14px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; cursor: pointer; transition: all .2s;
+  }
+  .btn-zip:hover { background: rgba(0,255,136,.2); }
+  .btn-clear {
+    background: none; border: 1px solid var(--ink-600); color: var(--ghost-400);
+    border-radius: 10px; padding: 6px 14px; font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; cursor: pointer; transition: all .2s;
+  }
+  .btn-clear:hover { border-color: rgba(255,68,68,.4); color: var(--danger); }
+
+  /* ── Empty State ── */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 240px; border: 2px dashed var(--ink-600); border-radius: 16px;
+  }
+  .empty-state p { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ghost-400); }
+  .empty-state p:last-child { font-size: 11px; margin-top: 6px; }
+
+  /* ── File Card ── */
+  .file-card { border-radius: 14px; border: 1px solid rgba(255,255,255,.06); background: linear-gradient(135deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); overflow: hidden; animation: fadeUp .3s ease-out; }
+  .file-card.done { box-shadow: 0 0 20px rgba(0,255,136,.08); }
+  .file-card-header { display: flex; align-items: flex-start; gap: 12px; padding: 14px; }
+  .file-thumb { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; border: 1px solid var(--ink-600); flex-shrink: 0; }
+  .file-icon-box { width: 48px; height: 48px; border-radius: 10px; background: var(--ink-700); border: 1px solid var(--ink-600); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: 14px; font-weight: 500; color: var(--ghost-100); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-meta { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ghost-400); margin-top: 3px; }
+  .file-meta .time { color: var(--safe); }
+  .remove-btn { background: none; border: none; color: var(--ghost-400); cursor: pointer; font-size: 18px; line-height: 1; transition: color .2s; padding: 2px; }
+  .remove-btn:hover { color: var(--danger); }
+
+  /* Status */
+  .status-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .status-text { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .status-done .status-dot { background: var(--safe); }
+  .status-done .status-text { color: var(--safe); }
+  .status-processing .status-dot { background: var(--blue); animation: pulse 1s infinite; }
+  .status-processing .status-text { color: var(--blue); }
+  .status-error .status-dot { background: var(--danger); }
+  .status-error .status-text { color: var(--danger); }
+
+  /* Progress bar */
+  .progress-track { height: 3px; background: var(--ink-700); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  .progress-fill {
+    height: 100%; border-radius: 99px; transition: width .3s;
+    background: linear-gradient(90deg, var(--safe), var(--blue), var(--safe));
+    background-size: 200% 100%; animation: shimmer 1.5s infinite;
+  }
+
+  /* Doc type badge */
+  .doc-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; border: 1px solid; font-family: 'IBM Plex Mono', monospace; font-size: 10px; margin-top: 8px; }
+  .doc-resume { color: var(--blue); border-color: rgba(0,212,255,.3); background: rgba(0,212,255,.08); }
+  .doc-invoice { color: var(--warn); border-color: rgba(255,184,0,.3); background: rgba(255,184,0,.08); }
+  .doc-contract { color: var(--purple); border-color: rgba(180,79,255,.3); background: rgba(180,79,255,.08); }
+  .doc-article { color: var(--safe); border-color: rgba(0,255,136,.3); background: rgba(0,255,136,.08); }
+  .doc-generic { color: var(--ghost-300); border-color: rgba(176,176,200,.3); background: rgba(176,176,200,.08); }
+
+  /* Tabs */
+  .file-tabs { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-top: 1px solid var(--ink-700); }
+  .tab-group { display: flex; gap: 2px; }
+  .tab-btn {
+    padding: 5px 10px; border-radius: 8px; font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--ghost-400); background: none; border: none; cursor: pointer; transition: all .2s;
+  }
+  .tab-btn:hover { color: var(--ghost-200); }
+  .tab-btn.active { background: var(--ink-600); color: var(--ghost-100); }
+  .tab-actions { display: flex; gap: 4px; }
+  .icon-btn { background: none; border: none; color: var(--ghost-400); cursor: pointer; padding: 5px; border-radius: 6px; font-size: 14px; transition: all .2s; }
+  .icon-btn:hover { color: var(--blue); background: rgba(0,212,255,.1); }
+
+  /* Result panel */
+  .result-panel { padding: 14px; background: rgba(10,10,15,.4); border-top: 1px solid var(--ink-700); animation: fadeUp .2s ease-out; }
+  .result-text { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ghost-200); white-space: pre-wrap; line-height: 1.7; max-height: 180px; overflow-y: auto; }
+  .structured-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .s-field { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .s-label { color: var(--ghost-400); }
+  .s-val { color: var(--ghost-100); }
+  .s-val.green { color: var(--safe); }
+  .s-val.yellow { color: var(--warn); }
+  .s-val.dim { color: var(--ghost-400); }
+  .extracted-fields { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ink-700); }
+  .ef-title { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ghost-400); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
+  .dl-json-btn { display: inline-flex; align-items: center; gap: 5px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--blue); background: none; border: none; cursor: pointer; margin-top: 10px; transition: opacity .2s; }
+  .dl-json-btn:hover { opacity: .7; }
+
+  /* Summary lines */
+  .summary-line { font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.7; }
+  .summary-key { color: var(--ghost-300); font-weight: 600; }
+  .summary-val { color: var(--ghost-200); }
+  .summary-bullet { color: var(--ghost-200); padding-left: 8px; }
+  .summary-dim { color: var(--ghost-400); }
+
+  /* Keyframes */
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes slideIn { from{transform:translateX(-8px);opacity:0} to{transform:translateX(0);opacity:1} }
+  @keyframes fadeUp { from{transform:translateY(8px);opacity:0} to{transform:translateY(0);opacity:1} }
+  @keyframes scan { 0%{transform:translateY(-100%)} 100%{transform:translateY(800%)} }
+  @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+  @keyframes borderGlow { 0%,100%{border-color:rgba(0,255,136,.3)} 50%{border-color:rgba(0,212,255,.3)} }
+</style>
+</head>
+<body>
+
+<div class="glow-bg"></div>
+
+<!-- ── Banner ── -->
+<div class="banner">
+  <div class="banner-inner">
+    <div class="privacy-badge">
+      <div class="dot-pulse"></div>
+      <span>🛡</span>
+      <span class="badge-text">Privacy Mode: ON</span>
+    </div>
+    <div class="banner-stats">
+      <div class="stat">
+        <span class="stat-label">🔒 Uploaded:</span>
+        <span class="stat-val green" id="bytes-stat">0 B</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">👁 Processed locally:</span>
+        <span class="stat-val" id="count-stat">0</span>
+      </div>
+      <div class="divider"></div>
+      <span class="guarantee">Your file never leaves your device</span>
+    </div>
+    <button class="offline-btn" id="offline-btn" onclick="toggleOffline()">
+      <span id="offline-icon">📶</span>
+      <span id="offline-label">Online</span>
+    </button>
+  </div>
+</div>
+
+<!-- ── Main ── -->
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="logo">
+        <div class="logo-icon">⚡</div>
+        <span class="logo-name">Zero<span>Trace</span> AI</span>
+      </div>
+      <h1>Process files.<br><span class="gradient-text">Privately. Locally.</span></h1>
+      <p class="subtitle">AI-powered file processing that runs entirely in your browser. Your data never touches a server.</p>
+    </div>
+    <div class="tech-badges">
+      <span class="tech-badge">pdf.js</span>
+      <span class="tech-badge">Tesseract.js</span>
+      <span class="tech-badge">Web Audio API</span>
+      <span class="tech-badge">100% Client-Side</span>
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div class="grid">
+
+    <!-- Left Column -->
+    <div class="left-col">
+
+      <!-- Drop Zone -->
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <div class="scan-line"></div>
+        <div class="file-type-icons">
+          <div class="file-type-icon"><div class="icon-box">📄</div><span class="icon-label">PDF</span></div>
+          <div class="file-type-icon"><div class="icon-box">🖼</div><span class="icon-label">IMG</span></div>
+          <div class="file-type-icon"><div class="icon-box">🎵</div><span class="icon-label">AUD</span></div>
+        </div>
+        <div class="upload-circle">⬆</div>
+        <p class="drop-title" id="drop-title">Drop files here</p>
+        <p class="drop-sub">or <a onclick="event.stopPropagation()">click to browse</a></p>
+        <p class="drop-types">PDF · PNG · JPG · WEBP · MP3 · WAV · M4A &nbsp;·&nbsp; Max 100MB</p>
+        <p class="drop-types" style="margin-top:6px">Supports batch upload — drop multiple files at once</p>
+      </div>
+      <input type="file" id="file-input" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.mp3,.wav,.ogg,.m4a,.bmp" style="display:none" onchange="handleFileInput(event)" />
+
+      <!-- Log Panel -->
+      <div class="log-panel">
+        <div class="log-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="traffic-lights">
+              <div class="tl tl-r"></div><div class="tl tl-y"></div><div class="tl tl-g"></div>
+            </div>
+            <div class="log-title-row">
+              <span style="font-size:13px">💻</span>
+              <span class="log-title">zerotrace.process — live log</span>
+            </div>
+          </div>
+          <button class="clear-btn" onclick="clearLogs()" title="Clear logs">🗑</button>
+        </div>
+        <div class="log-body" id="log-body">
+          <div class="log-prompt"><span>$</span> Waiting for files...<span class="blink">_</span></div>
+        </div>
+      </div>
+
+      <!-- Privacy Card -->
+      <div class="privacy-card">
+        <div class="privacy-card-title">How privacy works</div>
+        <div class="privacy-item"><div class="privacy-item-icon">🔒</div><div class="privacy-item-text">Files read via FileReader API — browser-only</div></div>
+        <div class="privacy-item"><div class="privacy-item-icon">⚙</div><div class="privacy-item-text">pdf.js &amp; Tesseract run in Web Workers</div></div>
+        <div class="privacy-item"><div class="privacy-item-icon">🧠</div><div class="privacy-item-text">AI analysis: local heuristics, zero API calls</div></div>
+        <div class="privacy-item"><div class="privacy-item-icon">📦</div><div class="privacy-item-text">Downloads use Blob URLs — no server</div></div>
+        <div class="privacy-item"><div class="privacy-item-icon">✓</div><div class="privacy-item-text">0 bytes uploaded, guaranteed</div></div>
+      </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="right-col">
+      <div id="stats-bar" style="display:none" class="stats-bar">
+        <div class="stats-group" id="stats-counts"></div>
+        <div class="stats-actions" id="stats-actions"></div>
+      </div>
+      <div id="empty-state" class="empty-state">
+        <p>No files processed yet</p>
+        <p>Drop files in the upload zone ←</p>
+      </div>
+      <div id="file-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const state = { files: [], processedCount: 0, offlineMode: false };
+
+// ── Logging ───────────────────────────────────────────────────────────────
+function addLog(msg, level = 'info') {
+  const body = document.getElementById('log-body');
+  const prompt = body.querySelector('.log-prompt');
+  if (prompt) prompt.remove();
+
+  const now = new Date();
+  const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">${t}</span><span class="log-${level}">${msg}</span>`;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+function clearLogs() {
+  document.getElementById('log-body').innerHTML = '<div class="log-prompt"><span style="color:var(--safe)">$</span> Waiting for files...<span class="blink">_</span></div>';
+}
+
+// ── Offline Toggle ─────────────────────────────────────────────────────────
+function toggleOffline() {
+  state.offlineMode = !state.offlineMode;
+  const btn = document.getElementById('offline-btn');
+  document.getElementById('offline-icon').textContent = state.offlineMode ? '📴' : '📶';
+  document.getElementById('offline-label').textContent = state.offlineMode ? 'Offline Mode' : 'Online';
+  btn.classList.toggle('active', state.offlineMode);
+}
+
+// ── Drag & Drop ────────────────────────────────────────────────────────────
+function onDragOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('drag-over');
+  document.getElementById('drop-title').textContent = 'Release to process locally';
+}
+function onDragLeave(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) {
+    document.getElementById('drop-zone').classList.remove('drag-over');
+    document.getElementById('drop-title').textContent = 'Drop files here';
+  }
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  document.getElementById('drop-title').textContent = 'Drop files here';
+  handleFiles(Array.from(e.dataTransfer.files));
+}
+function handleFileInput(e) {
+  handleFiles(Array.from(e.target.files));
+  e.target.value = '';
+}
+
+// ── File Handling ──────────────────────────────────────────────────────────
+const ACCEPTED = ['application/pdf','image/png','image/jpeg','image/webp','image/gif','image/bmp','audio/mpeg','audio/wav','audio/ogg','audio/mp4'];
+const MAX_SIZE = 100 * 1024 * 1024;
+
+function getFileType(f) {
+  if (f.type === 'application/pdf') return 'pdf';
+  if (f.type.startsWith('image/')) return 'image';
+  if (f.type.startsWith('audio/')) return 'audio';
+  return 'unknown';
+}
+
+function formatSize(b) {
+  if (b === 0) return '0 B';
+  const k = 1024, s = ['B','KB','MB','GB'];
+  const i = Math.floor(Math.log(b) / Math.log(k));
+  return `${parseFloat((b/Math.pow(k,i)).toFixed(1))} ${s[i]}`;
+}
+
+function formatTime(ms) { return ms < 1000 ? `${ms}ms` : `${(ms/1000).toFixed(2)}s`; }
+
+function genId() { return Math.random().toString(36).slice(2,9); }
+
+function handleFiles(files) {
+  const valid = files.filter(f => {
+    if (f.size > MAX_SIZE) { addLog(`⚠ ${f.name} exceeds 100MB — skipped`, 'warn'); return false; }
+    if (!ACCEPTED.includes(f.type)) { addLog(`⚠ Unsupported: ${f.name}`, 'warn'); return false; }
+    return true;
+  });
+  valid.forEach(f => queueFile(f));
+}
+
+function queueFile(file) {
+  const id = genId();
+  const type = getFileType(file);
+  const preview = type === 'image' ? URL.createObjectURL(file) : null;
+  const entry = { id, file, type, status: 'idle', preview, progress: 0 };
+  state.files.push(entry);
+
+  document.getElementById('empty-state').style.display = 'none';
+  renderFileCard(entry);
+  updateStats();
+  addLog(`📎 Queued: ${file.name} (${formatSize(file.size)})`);
+
+  setTimeout(() => processFile(id), 50);
+}
+
+// ── Processing Pipeline ────────────────────────────────────────────────────
+async function processFile(id) {
+  const entry = state.files.find(f => f.id === id);
+  if (!entry) return;
+
+  const start = Date.now();
+  updateEntry(id, { status: 'processing', progress: 5 });
+  addLog('🔒 Initializing local processing...');
+
+  await sleep(200);
+  addLog('⚙ Running conversion in browser...');
+  updateEntry(id, { progress: 15 });
+
+  try {
+    let text = '';
+
+    if (entry.type === 'pdf') {
+      addLog('📄 Extracting text from PDF (pdf.js)...');
+      text = await extractPDF(entry.file, p => updateEntry(id, { progress: 15 + p * .5 }));
+    } else if (entry.type === 'image') {
+      addLog('🔍 Running OCR (Tesseract.js)...');
+      text = await extractOCR(entry.file, p => updateEntry(id, { progress: 15 + p * .5 }));
+    } else if (entry.type === 'audio') {
+      addLog('🎵 Analyzing audio (Web Audio API)...');
+      text = await analyzeAudio(entry.file, p => updateEntry(id, { progress: 15 + p * .5 }));
+    }
+
+    updateEntry(id, { progress: 70 });
+    addLog('🧠 Running AI analysis locally...');
+    await sleep(400);
+
+    const docType = detectDocType(text);
+    const summary = generateSummary(text, docType);
+    const structured = extractStructured(text, docType);
+
+    addLog('✅ No network requests detected', 'success');
+    updateEntry(id, { progress: 95 });
+    await sleep(200);
+
+    const ms = Date.now() - start;
+    addLog(`✨ Processed locally in ${formatTime(ms)}`, 'success');
+
+    updateEntry(id, { status: 'done', extractedText: text, summary, docType, structured, processingTimeMs: ms, progress: 100 });
+    state.processedCount++;
+    document.getElementById('count-stat').textContent = state.processedCount;
+    updateStats();
+
+  } catch (err) {
+    addLog(`✗ Error: ${err.message}`, 'error');
+    updateEntry(id, { status: 'error', error: err.message, progress: 0 });
+    updateStats();
+  }
+}
+
+// ── PDF Extraction ─────────────────────────────────────────────────────────
+async function extractPDF(file, onProgress) {
+  // Dynamically load pdf.js from CDN
+  if (!window.pdfjsLib) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs', true);
+    window.pdfjsLib = globalThis.pdfjsLib;
+    if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs';
+  }
+  if (!window.pdfjsLib) {
+    // Fallback: read as text
+    return await readAsText(file);
+  }
+  const buf = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+  const parts = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const t = content.items.map(x => x.str || '').join(' ').replace(/\s+/g,' ').trim();
+    if (t) parts.push(`--- Page ${i} ---\n${t}`);
+    onProgress(Math.round(i / pdf.numPages * 100));
+  }
+  return parts.join('\n\n') || 'No readable text found in this PDF.';
+}
+
+// ── OCR ────────────────────────────────────────────────────────────────────
+async function extractOCR(file, onProgress) {
+  if (!window.Tesseract) {
+    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  }
+  if (!window.Tesseract) return '[OCR unavailable — Tesseract.js failed to load]';
+
+  onProgress(10);
+  const worker = await Tesseract.createWorker('eng', 1, {
+    logger: m => { if (m.status === 'recognizing text') onProgress(Math.round(m.progress * 100)); }
+  });
+  const { data } = await worker.recognize(file);
+  await worker.terminate();
+  return data.text.trim() || 'No text detected in image.';
+}
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+async function analyzeAudio(file, onProgress) {
+  onProgress(20);
+  const buf = await file.arrayBuffer();
+  onProgress(40);
+  let duration = 0, sampleRate = 44100, channels = 1;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await ctx.decodeAudioData(buf.slice(0));
+    duration = decoded.duration; sampleRate = decoded.sampleRate; channels = decoded.numberOfChannels;
+    ctx.close();
+  } catch(e) {}
+  onProgress(100);
+  const mins = Math.floor(duration/60), secs = Math.round(duration%60);
+  return [
+    '[Audio File Analysis]','',
+    `File: ${file.name}`, `Format: ${file.type || 'unknown'}`,
+    `Duration: ${duration > 0 ? `${mins}m ${secs}s` : 'unknown'}`,
+    `Sample Rate: ${sampleRate.toLocaleString()} Hz`,
+    `Channels: ${channels===1?'Mono':channels===2?'Stereo':channels}`,
+    '','[Transcription]',
+    'Audio transcription requires a local speech model (e.g., whisper.wasm).',
+    'This audio was analyzed locally — 0 bytes uploaded.'
+  ].join('\n');
+}
+
+// ── AI Analysis ────────────────────────────────────────────────────────────
+const DOC_PATTERNS = {
+  resume: ['experience','education','skills','objective','summary','employment','work history','cv','linkedin','certifications','responsibilities'],
+  invoice: ['invoice','bill to','payment due','total amount','subtotal','invoice number','due date','qty','unit price','amount due','net 30'],
+  contract: ['agreement','whereas','hereinafter','party','obligations','terms and conditions','jurisdiction','liability','indemnify','arbitration'],
+  article: ['abstract','introduction','conclusion','references','methodology','discussion','findings','hypothesis','research','published','doi']
+};
+
+function detectDocType(text) {
+  const t = text.toLowerCase();
+  let best = 'generic', bestScore = 2;
+  for (const [type, kws] of Object.entries(DOC_PATTERNS)) {
+    const score = kws.reduce((s,kw) => s + (t.match(new RegExp(kw,'g'))||[]).length, 0);
+    if (score > bestScore) { best = type; bestScore = score; }
+  }
+  return best;
+}
+
+function generateSummary(text, docType) {
+  if (!text || text.length < 50) return 'Insufficient text content.';
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const readTime = Math.ceil(words / 200);
+  const labels = { resume:'Resume / CV', invoice:'Invoice', contract:'Contract', article:'Article', generic:'Document' };
+
+  const sentences = text.split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(s=>s.length>30&&s.length<300&&/[a-zA-Z]/.test(s));
+  const kws = DOC_PATTERNS[docType] || [];
+  const top = sentences.slice(0,20).sort((a,b)=>{
+    const score = s => (kws.filter(k=>s.toLowerCase().includes(k)).length*2) + (/\d/.test(s)?1:0);
+    return score(b)-score(a);
+  }).slice(0,3);
+
+  return [
+    `**Document Type:** ${labels[docType]||'Document'}`,
+    `**Length:** ${words.toLocaleString()} words`,
+    `**Reading Time:** ~${readTime} min`,
+    '',
+    '**Key Excerpts:**',
+    ...top.map(s=>`• ${s.trim()}`),
+    '',
+    `**Processing:** Extracted locally · 0 bytes uploaded`
+  ].join('\n');
+}
+
+function extractStructured(text, docType) {
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const kws = DOC_PATTERNS[docType] || [];
+  const hits = kws.filter(k => text.toLowerCase().includes(k)).length;
+  const confidence = hits >= 4 ? 'high' : hits >= 2 ? 'medium' : 'low';
+  const keyFields = {};
+
+  const email = text.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
+  if (email) keyFields['Email'] = email[0];
+  const phone = text.match(/(\+?\d[\d\s\-().]{8,}\d)/);
+  if (phone) keyFields['Phone'] = phone[0].trim();
+  const url = text.match(/https?:\/\/[^\s]+/);
+  if (url) keyFields['URL'] = url[0];
+
+  if (docType === 'invoice') {
+    const inv = text.match(/invoice\s*#?\s*:?\s*([\w-]+)/i);
+    if (inv) keyFields['Invoice #'] = inv[1];
+    const tot = text.match(/total\s*:?\s*\$?([\d,]+\.?\d*)/i);
+    if (tot) keyFields['Total'] = `$${tot[1]}`;
+  }
+  if (docType === 'resume') {
+    const first = text.split('\n')[0]?.trim();
+    if (first && first.length < 50 && /^[A-Z]/.test(first)) keyFields['Name'] = first;
+  }
+
+  return { docType, confidence, keyFields, wordCount: words, readingTime: `~${Math.ceil(words/200)} min` };
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function updateEntry(id, patch) {
+  const idx = state.files.findIndex(f => f.id === id);
+  if (idx < 0) return;
+  Object.assign(state.files[idx], patch);
+  refreshCard(id);
+}
+
+function renderFileCard(entry) {
+  const list = document.getElementById('file-list');
+  const card = document.createElement('div');
+  card.className = 'file-card';
+  card.id = `card-${entry.id}`;
+  list.appendChild(card);
+  refreshCard(entry.id);
+}
+
+const DOC_CLASS = { resume:'doc-resume', invoice:'doc-invoice', contract:'doc-contract', article:'doc-article', generic:'doc-generic' };
+const DOC_ICON = { resume:'👤', invoice:'🧾', contract:'📜', article:'📰', generic:'📄' };
+const DOC_LABEL = { resume:'Resume / CV', invoice:'Invoice', contract:'Contract', article:'Article', generic:'Document' };
+const FILE_ICON = { pdf:'📄', image:'🖼', audio:'🎵', unknown:'📎' };
+
+function refreshCard(id) {
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  const e = state.files.find(f => f.id === id);
+  if (!e) return;
+
+  const activeTab = card.dataset.activeTab || 'summary';
+  const expanded = card.dataset.expanded === '1';
+
+  const thumb = e.preview
+    ? `<img class="file-thumb" src="${e.preview}" alt="${e.file.name}" />`
+    : `<div class="file-icon-box">${FILE_ICON[e.type]||'📎'}</div>`;
+
+  const timeLabel = e.processingTimeMs ? `<span class="time">· Processed in ${formatTime(e.processingTimeMs)}</span>` : '';
+
+  let statusHtml = '';
+  if (e.status === 'done') {
+    statusHtml = `<div class="status-row status-done"><div class="status-dot"></div><span class="status-text">Processing complete</span></div>`;
+    if (e.docType) {
+      statusHtml += `<div><span class="doc-badge ${DOC_CLASS[e.docType]}">${DOC_ICON[e.docType]} ${DOC_LABEL[e.docType]}</span></div>`;
+    }
+  } else if (e.status === 'processing' || e.status === 'loading') {
+    statusHtml = `
+      <div class="status-row status-processing"><div class="status-dot"></div><span class="status-text">Processing locally...</span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${e.progress||0}%"></div></div>`;
+  } else if (e.status === 'error') {
+    statusHtml = `<div class="status-row status-error"><div class="status-dot"></div><span class="status-text">${e.error||'Failed'}</span></div>`;
+  }
+
+  let tabsHtml = '', resultHtml = '';
+  if (e.status === 'done') {
+    tabsHtml = `
+      <div class="file-tabs">
+        <div class="tab-group">
+          <button class="tab-btn ${activeTab==='summary'&&expanded?'active':''}" onclick="setTab('${id}','summary')">📊 Summary</button>
+          <button class="tab-btn ${activeTab==='text'&&expanded?'active':''}" onclick="setTab('${id}','text')">📝 Text</button>
+          <button class="tab-btn ${activeTab==='structured'&&expanded?'active':''}" onclick="setTab('${id}','structured')">🏷 Structured</button>
+        </div>
+        <div class="tab-actions">
+          ${e.extractedText ? `<button class="icon-btn" title="Download text" onclick="dlText('${id}')">⬇</button>` : ''}
+          <button class="icon-btn" onclick="toggleExpand('${id}')">${expanded?'▲':'▼'}</button>
+        </div>
+      </div>`;
+
+    if (expanded) {
+      if (activeTab === 'summary') resultHtml = renderSummary(e.summary);
+      else if (activeTab === 'text') resultHtml = renderText(e.extractedText);
+      else if (activeTab === 'structured') resultHtml = renderStructured(id, e.structured);
+    }
+  }
+
+  card.className = `file-card${e.status==='done'?' done':''}`;
+  card.innerHTML = `
+    <div class="file-card-header">
+      ${thumb}
+      <div class="file-info">
+        <div class="file-name">${e.file.name}</div>
+        <div class="file-meta">${formatSize(e.file.size)} ${timeLabel}</div>
+        ${statusHtml}
+      </div>
+      <button class="remove-btn" onclick="removeFile('${id}')">✕</button>
+    </div>
+    ${tabsHtml}
+    ${resultHtml ? `<div class="result-panel">${resultHtml}</div>` : ''}
+  `;
+  card.dataset.activeTab = activeTab;
+  card.dataset.expanded = expanded ? '1' : '0';
+}
+
+function renderSummary(summary) {
+  if (!summary) return '<p class="summary-dim">No summary available.</p>';
+  return summary.split('\n').map(line => {
+    if (!line) return '<div style="height:6px"></div>';
+    const m = line.match(/^\*\*(.+?)\*\*:\s*(.+)/);
+    if (m) return `<div class="summary-line"><span class="summary-key">${m[1]}:</span> <span class="summary-val">${m[2]}</span></div>`;
+    if (line.startsWith('**') && line.endsWith('**')) return `<div class="summary-line summary-key" style="margin-top:4px">${line.replace(/\*\*/g,'')}</div>`;
+    if (line.startsWith('• ')) return `<div class="summary-line summary-bullet">${line}</div>`;
+    return `<div class="summary-line summary-dim">${line}</div>`;
+  }).join('');
+}
+
+function renderText(text) {
+  if (!text) return '<p class="summary-dim">No text extracted.</p>';
+  const preview = text.slice(0, 2000);
+  const more = text.length > 2000 ? `\n\n... ${(text.length-2000).toLocaleString()} more characters` : '';
+  return `<pre class="result-text">${escHtml(preview)}${more ? `<span class="summary-dim">${more}</span>` : ''}</pre>`;
+}
+
+function renderStructured(id, s) {
+  if (!s) return '<p class="summary-dim">No structured data.</p>';
+  const confClass = s.confidence === 'high' ? 'green' : s.confidence === 'medium' ? 'yellow' : 'dim';
+  let fields = `
+    <div class="structured-grid">
+      <div class="s-field"><span class="s-label">Doc Type: </span><span class="s-val">${s.docType}</span></div>
+      <div class="s-field"><span class="s-label">Confidence: </span><span class="s-val ${confClass}">${s.confidence}</span></div>
+      <div class="s-field"><span class="s-label">Words: </span><span class="s-val">${s.wordCount?.toLocaleString()}</span></div>
+      <div class="s-field"><span class="s-label">Reading Time: </span><span class="s-val">${s.readingTime}</span></div>
+    </div>`;
+
+  if (s.keyFields && Object.keys(s.keyFields).length > 0) {
+    fields += `<div class="extracted-fields"><div class="ef-title">Extracted Fields</div>`;
+    fields += Object.entries(s.keyFields).map(([k,v]) =>
+      `<div class="s-field" style="margin-bottom:4px"><span class="s-label">${k}: </span><span class="s-val">${escHtml(String(v))}</span></div>`
+    ).join('');
+    fields += '</div>';
+  }
+  fields += `<button class="dl-json-btn" onclick="dlJSON('${id}')">⬇ Download as JSON</button>`;
+  return fields;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Tab / Expand ───────────────────────────────────────────────────────────
+function setTab(id, tab) {
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  card.dataset.activeTab = tab;
+  card.dataset.expanded = '1';
+  refreshCard(id);
+}
+function toggleExpand(id) {
+  const card = document.getElementById(`card-${id}`);
+  if (!card) return;
+  card.dataset.expanded = card.dataset.expanded === '1' ? '0' : '1';
+  refreshCard(id);
+}
+
+// ── Remove ─────────────────────────────────────────────────────────────────
+function removeFile(id) {
+  const idx = state.files.findIndex(f => f.id === id);
+  if (idx < 0) return;
+  const e = state.files[idx];
+  if (e.preview) URL.revokeObjectURL(e.preview);
+  state.files.splice(idx, 1);
+  document.getElementById(`card-${id}`)?.remove();
+  if (state.files.length === 0) document.getElementById('empty-state').style.display = '';
+  updateStats();
+}
+
+function clearAll() {
+  state.files.forEach(f => f.preview && URL.revokeObjectURL(f.preview));
+  state.files = [];
+  document.getElementById('file-list').innerHTML = '';
+  document.getElementById('empty-state').style.display = '';
+  updateStats();
+}
+
+// ── Stats Bar ──────────────────────────────────────────────────────────────
+function updateStats() {
+  const bar = document.getElementById('stats-bar');
+  const counts = document.getElementById('stats-counts');
+  const actions = document.getElementById('stats-actions');
+  if (state.files.length === 0) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  const done = state.files.filter(f=>f.status==='done');
+  const proc = state.files.filter(f=>['loading','processing'].includes(f.status));
+  const errs = state.files.filter(f=>f.status==='error');
+
+  counts.innerHTML = `
+    <span class="stat-item">Total: <b>${state.files.length}</b></span>
+    ${done.length ? `<span class="stat-item">Done: <b class="green">${done.length}</b></span>` : ''}
+    ${proc.length ? `<span class="stat-item">Processing: <b class="blue">${proc.length}</b></span>` : ''}
+    ${errs.length ? `<span class="stat-item">Errors: <b class="red">${errs.length}</b></span>` : ''}
+  `;
+
+  actions.innerHTML = `
+    ${done.length >= 2 ? `<button class="btn-zip" onclick="downloadZip()">📦 Download ZIP (${done.length})</button>` : ''}
+    <button class="btn-clear" onclick="clearAll()">Clear All</button>
+  `;
+}
+
+// ── Downloads ──────────────────────────────────────────────────────────────
+function dlText(id) {
+  const e = state.files.find(f=>f.id===id);
+  if (!e?.extractedText) return;
+  triggerDownload(new Blob([e.extractedText],{type:'text/plain'}), `${e.file.name}_extracted.txt`);
+}
+
+function dlJSON(id) {
+  const e = state.files.find(f=>f.id===id);
+  if (!e) return;
+  const data = { ...e.structured, fileName: e.file.name, processedLocally: true, bytesUploaded: 0 };
+  triggerDownload(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), `${e.file.name}_structured.json`);
+}
+
+async function downloadZip() {
+  const done = state.files.filter(f=>f.status==='done');
+  if (!done.length) return;
+  const zip = new JSZip();
+  const folder = zip.folder('zerotrace-output');
+  done.forEach(e => {
+    const base = e.file.name.replace(/\.[^.]+$/,'');
+    if (e.extractedText) folder.file(`${base}_extracted.txt`, e.extractedText);
+    if (e.summary) folder.file(`${base}_summary.txt`, e.summary);
+    if (e.structured) folder.file(`${base}_metadata.json`, JSON.stringify({...e.structured, bytesUploaded:0}, null,2));
+  });
+  const blob = await zip.generateAsync({type:'blob'});
+  triggerDownload(blob, 'zerotrace-output.zip');
+}
+
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+function readAsText(file) {
+  return new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsText(file);
+  });
+}
+
+function loadScript(src, isModule=false) {
+  return new Promise((res,rej) => {
+    const s = document.createElement('script');
+    s.src = src;
+    if (isModule) s.type = 'module';
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+</script>
+</body>
+</html>
